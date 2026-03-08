@@ -2102,6 +2102,11 @@ pub struct RuntimeConfig {
     /// - `Some(false)`: disable reasoning/thinking when supported
     #[serde(default)]
     pub reasoning_enabled: Option<bool>,
+
+    /// Context window size override for providers that support it (e.g. Ollama).
+    /// When set, passed as `num_ctx` in the request options.
+    #[serde(default)]
+    pub num_ctx: Option<u64>,
 }
 
 /// Docker runtime configuration (`[runtime.docker]` section).
@@ -2176,6 +2181,7 @@ impl Default for RuntimeConfig {
             kind: default_runtime_kind(),
             docker: DockerRuntimeConfig::default(),
             reasoning_enabled: None,
+            num_ctx: None,
         }
     }
 }
@@ -4532,6 +4538,13 @@ impl Config {
                 "1" | "true" | "yes" | "on" => self.runtime.reasoning_enabled = Some(true),
                 "0" | "false" | "no" | "off" => self.runtime.reasoning_enabled = Some(false),
                 _ => {}
+            }
+        }
+
+        // Context window override: ZEROCLAW_NUM_CTX
+        if let Ok(val) = std::env::var("ZEROCLAW_NUM_CTX") {
+            if let Ok(n) = val.trim().parse::<u64>() {
+                self.runtime.num_ctx = Some(n);
             }
         }
 

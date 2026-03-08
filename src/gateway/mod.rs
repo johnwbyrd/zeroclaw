@@ -349,6 +349,7 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
             zeroclaw_dir: config.config_path.parent().map(std::path::PathBuf::from),
             secrets_encrypt: config.secrets.encrypt,
             reasoning_enabled: config.runtime.reasoning_enabled,
+            num_ctx: config.runtime.num_ctx,
         },
     )?);
     let model = config

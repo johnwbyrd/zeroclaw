@@ -676,6 +676,7 @@ pub struct ProviderRuntimeOptions {
     pub zeroclaw_dir: Option<PathBuf>,
     pub secrets_encrypt: bool,
     pub reasoning_enabled: Option<bool>,
+    pub num_ctx: Option<u64>,
 }
 
 impl Default for ProviderRuntimeOptions {
@@ -686,6 +687,7 @@ impl Default for ProviderRuntimeOptions {
             zeroclaw_dir: None,
             secrets_encrypt: true,
             reasoning_enabled: None,
+            num_ctx: None,
         }
     }
 }
@@ -972,10 +974,11 @@ fn create_provider_with_url_and_options(
         "anthropic" => Ok(Box::new(anthropic::AnthropicProvider::new(key))),
         "openai" => Ok(Box::new(openai::OpenAiProvider::with_base_url(api_url, key))),
         // Ollama uses api_url for custom base URL (e.g. remote Ollama instance)
-        "ollama" => Ok(Box::new(ollama::OllamaProvider::new_with_reasoning(
+        "ollama" => Ok(Box::new(ollama::OllamaProvider::new_with_options(
             api_url,
             key,
             options.reasoning_enabled,
+            options.num_ctx,
         ))),
         "gemini" | "google" | "google-gemini" => {
             let state_dir = options

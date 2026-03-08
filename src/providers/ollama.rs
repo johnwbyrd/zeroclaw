@@ -11,6 +11,7 @@ pub struct OllamaProvider {
     base_url: String,
     api_key: Option<String>,
     reasoning_enabled: Option<bool>,
+    num_ctx: Option<u64>,
 }
 
 // ─── Request Structures ───────────────────────────────────────────────────────
@@ -56,6 +57,8 @@ struct OutgoingFunction {
 #[derive(Debug, Serialize)]
 struct Options {
     temperature: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    num_ctx: Option<u64>,
 }
 
 // ─── Response Structures ──────────────────────────────────────────────────────
@@ -110,13 +113,22 @@ impl OllamaProvider {
     }
 
     pub fn new(base_url: Option<&str>, api_key: Option<&str>) -> Self {
-        Self::new_with_reasoning(base_url, api_key, None)
+        Self::new_with_options(base_url, api_key, None, None)
     }
 
     pub fn new_with_reasoning(
         base_url: Option<&str>,
         api_key: Option<&str>,
         reasoning_enabled: Option<bool>,
+    ) -> Self {
+        Self::new_with_options(base_url, api_key, reasoning_enabled, None)
+    }
+
+    pub fn new_with_options(
+        base_url: Option<&str>,
+        api_key: Option<&str>,
+        reasoning_enabled: Option<bool>,
+        num_ctx: Option<u64>,
     ) -> Self {
         let api_key = api_key.and_then(|value| {
             let trimmed = value.trim();
@@ -127,6 +139,7 @@ impl OllamaProvider {
             base_url: Self::normalize_base_url(base_url.unwrap_or("http://localhost:11434")),
             api_key,
             reasoning_enabled,
+            num_ctx,
         }
     }
 
@@ -210,7 +223,7 @@ impl OllamaProvider {
             model: model.to_string(),
             messages,
             stream: false,
-            options: Options { temperature },
+            options: Options { temperature, num_ctx: self.num_ctx },
             think: self.reasoning_enabled,
             tools: tools.map(|t| t.to_vec()),
         }
@@ -358,14 +371,32 @@ impl OllamaProvider {
         let url = format!("{}/api/chat", self.base_url);
 
         tracing::debug!(
-            "Ollama request: url={} model={} message_count={} temperature={} think={:?} tool_count={}",
+            "Ollama request: url={} model={} message_count={} temperature={} think={:?} tool_count={} num_ctx={:?}",
             url,
             model,
             request.messages.len(),
             temperature,
             request.think,
             request.tools.as_ref().map_or(0, |t| t.len()),
+            request.options.num_ctx,
         );
+        for (i, msg) in request.messages.iter().enumerate() {
+            let content_len = msg.content.as_deref().map_or(0, |c| c.len());
+            let preview: String = msg
+                .content
+                .as_deref()
+                .unwrap_or("")
+                .chars()
+                .take(120)
+                .collect();
+            tracing::debug!(
+                "  msg[{i}] role={} content_len={} has_tool_calls={} preview={:?}",
+                msg.role,
+                content_len,
+                msg.tool_calls.is_some(),
+                preview,
+            );
+        }
 
         let mut request_builder = self.http_client().post(&url).json(&request);
 
@@ -381,6 +412,8 @@ impl OllamaProvider {
 
         let body = response.bytes().await?;
         tracing::debug!("Ollama response body length: {} bytes", body.len());
+
+        // Log prompt/eval token counts after parsing (below)
 
         if !status.is_success() {
             let raw = String::from_utf8_lossy(&body);
@@ -409,6 +442,12 @@ impl OllamaProvider {
                 anyhow::bail!("Failed to parse Ollama response: {e}");
             }
         };
+
+        tracing::debug!(
+            "Ollama token usage: prompt_eval_count={:?} eval_count={:?}",
+            chat_response.prompt_eval_count,
+            chat_response.eval_count,
+        );
 
         Ok(chat_response)
     }
